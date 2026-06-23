@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>스마트 바코드 맵핑</title>
+    
+    <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <style>
+        :root {
+            --primary: #4361ee;
+            --primary-light: #4895ef;
+            --bg-color: #f8f9fa;
+            --text-main: #2b2d42;
+            --text-muted: #8d99ae;
+            --card-bg: #ffffff;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Pretendard', sans-serif; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden; /* 스크롤 방지 */
+        }
+
+        /* 앱 컨테이너 (PC에서 볼 때도 모바일 화면처럼 보이게 제어) */
+        .app-container {
+            width: 100%;
+            max-width: 480px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-color);
+            position: relative;
+            box-shadow: 0 0 20px rgba(0,0,0,0.05);
+        }
+
+        /* 상단 헤더 */
+        header {
+            background-color: var(--card-bg);
+            padding: 20px;
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: 700;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+            z-index: 10;
+        }
+
+        /* 메인 컨텐츠 영역 */
+        main {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            padding-bottom: 80px; /* 하단 네비게이션 공간 확보 */
+        }
+
+        /* 탭 숨김 처리 */
+        .tab-content { display: none; animation: fadeIn 0.3s ease; }
+        .tab-content.active { display: block; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* 카드 UI 공통 */
+        .card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.04);
+            margin-bottom: 20px;
+        }
+
+        /* 스캐너 영역 UI 개선 */
+        #reader { border: none !important; border-radius: 12px; overflow: hidden; }
+        #reader button {
+            background: var(--primary); color: white; border: none;
+            padding: 10px 16px; border-radius: 8px; font-weight: 600; cursor: pointer;
+            margin: 5px; transition: 0.2s;
+        }
+        #reader button:hover { background: var(--primary-light); }
+
+        /* 알림 메시지 영역 */
+        .status-box {
+            text-align: center; font-weight: 600; padding: 15px; border-radius: 12px;
+            background: #e9ecef; color: var(--text-muted); word-break: break-all;
+        }
+        .status-success { background: #d4edda; color: #155724; }
+        .status-error { background: #f8d7da; color: #721c24; }
+
+        /* 수동 검색 입력창 */
+        .search-container { display: flex; gap: 10px; margin-top: 15px; }
+        .search-container input {
+            flex: 1; padding: 12px; border: 1px solid #dee2e6; border-radius: 8px; font-size: 1rem; outline: none;
+        }
+        .search-container input:focus { border-color: var(--primary); }
+        .search-container button {
+            background: var(--text-main); color: white; border: none; border-radius: 8px; padding: 0 20px; font-weight: 600;
+        }
+
+        /* 데이터베이스 탭 리스트 */
+        .data-item {
+            padding: 12px 0; border-bottom: 1px solid #eee; display: flex; flex-direction: column; gap: 5px;
+        }
+        .data-item:last-child { border-bottom: none; }
+        .data-barcode { font-weight: 700; color: var(--primary); }
+        .data-url { font-size: 0.85rem; color: var(--text-muted); word-break: break-all; }
+        .data-stats { font-size: 0.9rem; margin-bottom: 15px; font-weight: 600; color: var(--primary); }
+
+        /* 하단 네비게이션 바 */
+        .bottom-nav {
+            position: absolute; bottom: 0; width: 100%; background: var(--card-bg);
+            display: flex; justify-content: space-around; padding: 15px 0;
+            box-shadow: 0 -2px 15px rgba(0,0,0,0.05); border-radius: 20px 20px 0 0; z-index: 10;
+        }
+        .nav-item {
+            display: flex; flex-direction: column; align-items: center; color: var(--text-muted);
+            font-size: 0.8rem; font-weight: 600; cursor: pointer; gap: 5px; transition: 0.2s;
+        }
+        .nav-item i { font-size: 1.3rem; }
+        .nav-item.active { color: var(--primary); }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <header>
+        <i class="fa-solid fa-barcode"></i> 스마트 바코드 맵핑
+    </header>
+
+    <main>
+        <section id="tab-scan" class="tab-content active">
+            <div class="card">
+                <div id="reader"></div>
+            </div>
+
+            <div class="status-box" id="statusBox">
+                ⏳ 엑셀 데이터를 불러오는 중입니다...
+            </div>
+
+            <div class="card" style="margin-top: 20px;">
+                <h4 style="margin-bottom: 10px; color: var(--text-main);"><i class="fa-solid fa-keyboard"></i> 수동 검색</h4>
+                <div class="search-container">
+                    <input type="text" id="manualInput" placeholder="바코드 번호 입력">
+                    <button onclick="handleManualSearch()">이동</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="tab-db" class="tab-content">
+            <div class="card">
+                <h3 style="margin-bottom: 5px;"><i class="fa-solid fa-database"></i> 등록된 데이터</h3>
+                <div class="data-stats" id="dataCount">총 0개의 바코드 로드됨</div>
+                <div id="dataList">
+                    </div>
+            </div>
+        </section>
+    </main>
+
+    <nav class="bottom-nav">
+        <div class="nav-item active" onclick="switchTab('tab-scan', this)">
+            <i class="fa-solid fa-camera"></i>
+            <span>스캔하기</span>
+        </div>
+        <div class="nav-item" onclick="switchTab('tab-db', this)">
+            <i class="fa-solid fa-list"></i>
+            <span>데이터 조회</span>
+        </div>
+    </nav>
+</div>
+
+<script>
+    let barcodeDb = {}; 
+    let isNavigating = false; 
+    let html5QrcodeScanner;
+
+    const statusBox = document.getElementById('statusBox');
+
+    // 상태 메시지 UI 업데이트
+    function setStatus(message, type) {
+        statusBox.innerHTML = message;
+        statusBox.className = 'status-box';
+        if (type) statusBox.classList.add(type);
+    }
+
+    // 404 에러 방지: URL 형식 자동 교정 함수 (핵심 수정 사항)
+    function fixUrlProtocol(url) {
+        let fixedUrl = url.trim();
+        // http:// 또는 https:// 로 시작하지 않는다면 자동으로 https:// 를 붙여줍니다.
+        if (!fixedUrl.startsWith('http://') && !fixedUrl.startsWith('https://')) {
+            fixedUrl = 'https://' + fixedUrl;
+        }
+        return fixedUrl;
+    }
+
+    // 엑셀 파일 로드 및 데이터 탭 UI 갱신
+    async function loadExcel() {
+        try {
+            const response = await fetch('Excel/barcode_mapping.xlsx');
+            if (!response.ok) throw new Error("엑셀 파일을 찾을 수 없습니다.");
+            
+            const arrayBuffer = await response.arrayBuffer();
+            const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+            const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            
+            let htmlContent = '';
+            let count = 0;
+
+            for (let i = 1; i < data.length; i++) {
+                const row = data[i];
+                if (row.length >= 2) {
+                    const barcode = String(row[0]).trim();
+                    const url = String(row[1]).trim();
+                    
+                    if (barcode && url) {
+                        if (!barcodeDb[barcode]) barcodeDb[barcode] = [];
+                        barcodeDb[barcode].push(url);
+                        count++;
+                        
+                        // 데이터 조회 탭에 HTML 리스트 추가
+                        htmlContent += `
+                            <div class="data-item">
+                                <span class="data-barcode"><i class="fa-solid fa-tag"></i> ${barcode}</span>
+                                <span class="data-url">${url}</span>
+                            </div>
+                        `;
+                    }
+                }
+            }
+            
+            document.getElementById('dataList').innerHTML = htmlContent;
+            document.getElementById('dataCount').innerText = `총 ${count}개의 바코드 연결됨`;
+
+            setStatus('✅ 스캔 준비 완료! 카메라 권한을 허용해주세요.', 'status-success');
+            startScanner();
+            
+        } catch (error) {
+            console.error(error);
+            setStatus(`❌ 엑셀 로드 실패: ${error.message}`, 'status-error');
+        }
+    }
+
+    // 공통 바코드 처리 로직 (카메라 스캔 & 수동 검색 모두 사용)
+    function processBarcode(barcodeText) {
+        if (isNavigating) return;
+
+        const urls = barcodeDb[barcodeText];
+        
+        if (urls && urls.length > 0) {
+            isNavigating = true;
+            if(html5QrcodeScanner) html5QrcodeScanner.pause(); 
+            
+            // 스마트폰 진동 피드백 (지원 기기 한정)
+            if (navigator.vibrate) navigator.vibrate(200);
+
+            // 404 에러 수정을 위해 URL 프로토콜 보정 거치기
+            const targetUrl = fixUrlProtocol(urls[0]);
+            
+            setStatus(`🎉 스캔 성공! [ ${barcodeText} ]<br>이동 중...`, 'status-success');
+            
+            setTimeout(() => {
+                window.location.href = targetUrl;
+            }, 800);
+        } else {
+            // 진동 피드백 (에러 시 짧게 두 번)
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+            setStatus(`❌ 엑셀에 없는 바코드입니다: ${barcodeText}`, 'status-error');
+        }
+    }
+
+    // 카메라 스캔 성공 이벤트
+    function onScanSuccess(decodedText, decodedResult) {
+        processBarcode(decodedText);
+    }
+
+    // 수동 검색 실행 이벤트
+    function handleManualSearch() {
+        const inputVal = document.getElementById('manualInput').value.trim();
+        if(inputVal === "") {
+            setStatus("⚠️ 바코드 번호를 입력해주세요.", 'status-error');
+            return;
+        }
+        processBarcode(inputVal);
+    }
+
+    // 스캐너 초기화
+    function startScanner() {
+        html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", { fps: 10, qrbox: { width: 250, height: 150 }, aspectRatio: 1.0 }, false
+        );
+        html5QrcodeScanner.render(onScanSuccess);
+    }
+
+    // 하단 탭 전환 로직
+    function switchTab(tabId, element) {
+        // 모든 탭 컨텐츠 숨기기
+        document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+        // 선택된 탭 컨텐츠 보이기
+        document.getElementById(tabId).classList.add('active');
+        
+        // 하단 네비게이션 아이콘 색상 변경
+        document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+        element.classList.add('active');
+    }
+
+    // 시작 시 실행
+    window.onload = loadExcel;
+</script>
+</body>
+</html>
