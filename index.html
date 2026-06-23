@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EHWA Barcode Scanner</title>
+    
+    <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <style>
+        :root {
+            /* EHWA 블루/하늘색 테마 */
+            --primary: #0056b3; 
+            --primary-light: #4dabf7;
+            --primary-gradient: linear-gradient(135deg, #0056b3 0%, #339af0 100%);
+            --bg-gradient: linear-gradient(120deg, #e0c3fc 0%, #8ec5fc 100%);
+            --text-main: #2b2d42;
+            --text-muted: #6c757d;
+            --card-bg: rgba(255, 255, 255, 0.85);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Pretendard', sans-serif; }
+
+        body {
+            background: var(--bg-gradient);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 480px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            background: transparent;
+            position: relative;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            z-index: 10;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            letter-spacing: 1px;
+        }
+
+        .lang-toggle {
+            display: flex;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 20px;
+            padding: 4px;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .lang-toggle button {
+            background: transparent;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 16px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .lang-toggle button.active {
+            background: white;
+            color: var(--primary);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        main {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 20px 100px 20px;
+        }
+
+        .tab-content { display: none; animation: fadeIn 0.4s ease; }
+        .tab-content.active { display: block; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.07);
+            margin-bottom: 20px;
+        }
+
+        #reader { border: none !important; border-radius: 12px; overflow: hidden; background: #000; }
+        #reader button {
+            background: var(--primary-gradient); color: white; border: none;
+            padding: 10px 16px; border-radius: 8px; font-weight: 600; cursor: pointer;
+            margin: 5px; transition: 0.2s; box-shadow: 0 4px 10px rgba(0, 86, 179, 0.2);
+        }
+        #reader button:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(0, 86, 179, 0.3); }
+
+        .status-box {
+            text-align: center; font-weight: 600; padding: 16px; border-radius: 16px;
+            background: rgba(255,255,255,0.9); color: var(--text-muted); word-break: break-all;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05); transition: transform 0.2s ease, background 0.3s ease;
+        }
+        .status-success { background: rgba(212, 237, 218, 0.9); color: #155724; border-left: 4px solid #28a745; }
+        .status-error { background: rgba(248, 215, 218, 0.9); color: #721c24; border-left: 4px solid #dc3545; }
+
+        .card-header { display: flex; align-items: center; gap: 8px; font-size: 1.1rem; font-weight: 700; margin-bottom: 12px; color: var(--primary); }
+        .search-container { display: flex; gap: 10px; }
+        .search-container input {
+            flex: 1; padding: 14px; border: 1px solid rgba(0,0,0,0.1); border-radius: 12px; 
+            font-size: 1rem; outline: none; background: rgba(255,255,255,0.8); transition: 0.3s;
+        }
+        .search-container input:focus { border-color: var(--primary-light); box-shadow: 0 0 0 3px rgba(77, 171, 247, 0.2); }
+        .search-container button {
+            background: var(--primary-gradient); color: white; border: none; border-radius: 12px; 
+            padding: 0 24px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.1); transition: 0.2s;
+        }
+        .search-container button:active { transform: scale(0.95); }
+
+        .data-stats { font-size: 0.9rem; margin-bottom: 15px; font-weight: 600; color: var(--text-muted); }
+        .data-item { padding: 12px 0; border-bottom: 1px dashed rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 5px; }
+        .data-item:last-child { border-bottom: none; }
+        .data-barcode { font-weight: 800; color: var(--primary); font-size: 1.05rem; }
+        .data-url { font-size: 0.85rem; color: var(--text-muted); word-break: break-all; }
+
+        .bottom-nav {
+            position: absolute; bottom: 0; width: 100%; background: var(--card-bg);
+            backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+            display: flex; justify-content: space-around; padding: 15px 0 25px 0;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.04); border-radius: 24px 24px 0 0; z-index: 10;
+        }
+        .nav-item {
+            display: flex; flex-direction: column; align-items: center; color: var(--text-muted);
+            font-size: 0.8rem; font-weight: 700; cursor: pointer; gap: 6px; transition: 0.3s;
+        }
+        .nav-item i { font-size: 1.4rem; padding: 10px; border-radius: 12px; transition: 0.3s; }
+        .nav-item.active { color: var(--primary); }
+        .nav-item.active i { background: rgba(0, 86, 179, 0.1); color: var(--primary); transform: translateY(-3px); }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <header>
+        <div class="logo">
+            <i class="fa-solid fa-qrcode"></i> EHWA
+        </div>
+        <div class="lang-toggle">
+            <button id="btn-ko" class="active" onclick="setLang('ko')">KO</button>
+            <button id="btn-en" onclick="setLang('en')">EN</button>
+        </div>
+    </header>
+
+    <main>
+        <section id="tab-scan" class="tab-content active">
+            <div class="card">
+                <div id="reader"></div>
+            </div>
+
+            <div class="status-box" id="statusBox">
+                ⏳ 엑셀 데이터를 불러오는 중입니다...
+            </div>
+
+            <div class="card" style="margin-top: 20px;">
+                <div class="card-header">
+                    <i class="fa-solid fa-keyboard"></i> <span data-i18n="manualTitle">수동 검색</span>
+                </div>
+                <div class="search-container">
+                    <input type="text" id="manualInput" data-i18n="manualPlaceholder" placeholder="바코드 번호 입력">
+                    <button onclick="handleManualSearch()" data-i18n="manualBtn">이동</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="tab-db" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fa-solid fa-database"></i> <span data-i18n="dbTitle">등록된 데이터</span>
+                </div>
+                <div class="data-stats" id="dataCount">데이터 확인 중...</div>
+                <div id="dataList">
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <nav class="bottom-nav">
+        <div class="nav-item active" onclick="switchTab('tab-scan', this)">
+            <i class="fa-solid fa-camera"></i>
+            <span data-i18n="navScan">스캔하기</span>
+        </div>
+        <div class="nav-item" onclick="switchTab('tab-db', this)">
+            <i class="fa-solid fa-list"></i>
+            <span data-i18n="navDb">데이터 조회</span>
+        </div>
+    </nav>
+</div>
+
+<script>
+    const i18n = {
+        ko: {
+            manualTitle: "수동 검색",
+            manualPlaceholder: "바코드 번호 입력",
+            manualBtn: "이동",
+            dbTitle: "등록된 데이터",
+            navScan: "스캔하기",
+            navDb: "데이터 조회",
+            msgLoading: "⏳ 엑셀 데이터를 불러오는 중입니다...",
+            msgReady: "✅ 스캔 준비 완료! 카메라 권한을 허용해주세요.",
+            msgError: "❌ 엑셀 로드 실패:",
+            msgSuccess: "🎉 스캔 성공! 이동 중...",
+            msgNotFound: "❌ 등록되지 않은 바코드입니다: ",
+            msgEmptyInput: "⚠️ 바코드 번호를 입력해주세요.",
+            dbCount: "총 {count}개의 바코드 연결됨"
+        },
+        en: {
+            manualTitle: "Manual Search",
+            manualPlaceholder: "Enter barcode",
+            manualBtn: "Go",
+            dbTitle: "Registered Data",
+            navScan: "Scanner",
+            navDb: "Database",
+            msgLoading: "⏳ Loading Excel data...",
+            msgReady: "✅ Ready! Please allow camera access.",
+            msgError: "❌ Failed to load Excel:",
+            msgSuccess: "🎉 Scan successful! Redirecting...",
+            msgNotFound: "❌ Barcode not found: ",
+            msgEmptyInput: "⚠️ Please enter a barcode number.",
+            dbCount: "Total {count} barcodes linked"
+        }
+    };
+
+    let currentLang = 'ko'; 
+    let loadedCount = 0; 
+    let barcodeDb = {}; 
+    let isNavigating = false; 
+    let html5QrcodeScanner;
+    const statusBox = document.getElementById('statusBox');
+
+    function setLang(lang) {
+        currentLang = lang;
+        document.getElementById('btn-ko').classList.remove('active');
+        document.getElementById('btn-en').classList.remove('active');
+        document.getElementById('btn-' + lang).classList.add('active');
+
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+            const key = el.getAttribute('data-i18n');
+            if(el.tagName === 'INPUT') el.placeholder = i18n[lang][key];
+            else el.innerHTML = i18n[lang][key];
+        });
+
+        if(document.getElementById('statusBox').className.includes('status-success')) {
+            setStatus(i18n[lang].msgReady, 'status-success');
+        }
+        document.getElementById('dataCount').innerText = i18n[lang].dbCount.replace('{count}', loadedCount);
+    }
+
+    function setStatus(message, type) {
+        statusBox.innerHTML = message;
+        statusBox.className = 'status-box';
+        if (type) statusBox.classList.add(type);
+    }
+
+    function fixUrlProtocol(url) {
+        let fixedUrl = url.trim();
+        if (!fixedUrl.startsWith('http://') && !fixedUrl.startsWith('https://')) {
+            fixedUrl = 'https://' + fixedUrl;
+        }
+        return fixedUrl;
+    }
+
+    async function loadExcel() {
+        setStatus(i18n[currentLang].msgLoading, '');
+        try {
+            const response = await fetch('Excel/barcode_mapping.xlsx');
+            if (!response.ok) throw new Error("File not found");
+            
+            const arrayBuffer = await response.arrayBuffer();
+            const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+            const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            
+            let htmlContent = '';
+            loadedCount = 0;
+
+            for (let i = 1; i < data.length; i++) {
+                const row = data[i];
+                if (row.length >= 2) {
+                    const barcode = String(row[0]).trim();
+                    const url = String(row[1]).trim();
+                    
+                    if (barcode && url) {
+                        if (!barcodeDb[barcode]) barcodeDb[barcode] = [];
+                        barcodeDb[barcode].push(url);
+                        loadedCount++;
+                        
+                        htmlContent += `
+                            <div class="data-item">
+                                <span class="data-barcode"><i class="fa-solid fa-tag"></i> ${barcode}</span>
+                                <span class="data-url">${url}</span>
+                            </div>
+                        `;
+                    }
+                }
+            }
+            
+            document.getElementById('dataList').innerHTML = htmlContent;
+            document.getElementById('dataCount').innerText = i18n[currentLang].dbCount.replace('{count}', loadedCount);
+
+            setStatus(i18n[currentLang].msgReady, 'status-success');
+            startScanner();
+            
+        } catch (error) {
+            console.error(error);
+            setStatus(`${i18n[currentLang].msgError} ${error.message}`, 'status-error');
+        }
+    }
+
+    function processBarcode(barcodeText) {
+        if (isNavigating) return;
+
+        // ★ 안전장치 1: 엑셀 데이터가 아예 없는 경우 팝업 경고창 띄우기
+        if (Object.keys(barcodeDb).length === 0) {
+            alert(currentLang === 'ko' ? "엑셀 데이터가 불러와지지 않았습니다. 엑셀 파일(barcode_mapping.xlsx) 위치를 확인해주세요!" : "Excel data is empty. Please check the file.");
+            return;
+        }
+
+        const urls = barcodeDb[barcodeText];
+        
+        if (urls && urls.length > 0) {
+            isNavigating = true; 
+            
+            if(html5QrcodeScanner) {
+                try { html5QrcodeScanner.pause(); } catch(e) {}
+            }
+            if (navigator.vibrate) navigator.vibrate(200);
+
+            const targetUrl = fixUrlProtocol(urls[0]);
+            setStatus(`[ ${barcodeText} ]<br>${i18n[currentLang].msgSuccess}`, 'status-success');
+            
+            // 페이지 이동 실행
+            try {
+                window.location.href = targetUrl;
+            } catch (error) {
+                alert("이동 중 오류가 발생했습니다: " + error.message);
+            }
+
+            // ★ 안전장치 2: 페이지 이동이 모종의 이유로 차단되었을 때 먹통 방지 (2초 후 락 해제)
+            setTimeout(() => {
+                isNavigating = false;
+            }, 2000);
+            
+        } else {
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+            setStatus(`${i18n[currentLang].msgNotFound} <strong>${barcodeText}</strong>`, 'status-error');
+            
+            // ★ 안전장치 3: 에러 메시지가 바뀌지 않아 반응이 없는 것처럼 보이는 것 방지 (상태창 깜빡임)
+            statusBox.style.transform = 'scale(1.05)';
+            setTimeout(() => { statusBox.style.transform = 'scale(1)'; }, 200);
+        }
+    }
+
+    function onScanSuccess(decodedText, decodedResult) {
+        processBarcode(decodedText);
+    }
+
+    function handleManualSearch() {
+        const inputVal = document.getElementById('manualInput').value.trim();
+        if(inputVal === "") {
+            setStatus(i18n[currentLang].msgEmptyInput, 'status-error');
+            return;
+        }
+        processBarcode(inputVal);
+    }
+
+    function startScanner() {
+        html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", { fps: 10, qrbox: { width: 250, height: 150 }, aspectRatio: 1.0 }, false
+        );
+        html5QrcodeScanner.render(onScanSuccess);
+    }
+
+    function switchTab(tabId, element) {
+        document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+        document.getElementById(tabId).classList.add('active');
+        
+        document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+        element.classList.add('active');
+    }
+
+    window.onload = () => {
+        setLang('ko'); 
+        loadExcel();
+
+        document.getElementById('manualInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                handleManualSearch();
+            }
+        });
+    };
+
+    window.addEventListener('pageshow', (event) => {
+        isNavigating = false; 
+        if (html5QrcodeScanner) {
+            try {
+                if (html5QrcodeScanner.getState() === Html5QrcodeScannerState.PAUSED) {
+                    html5QrcodeScanner.resume();
+                }
+            } catch(e) {}
+        }
+        if (loadedCount > 0) setStatus(i18n[currentLang].msgReady, 'status-success');
+        document.getElementById('manualInput').value = '';
+    });
+</script>
+</body>
+</html>
